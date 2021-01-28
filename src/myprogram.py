@@ -1,8 +1,11 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import os
 import string
 import random
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+from Trie import TrieModel
 
 
 class MyModel:
@@ -20,7 +23,7 @@ class MyModel:
     def load_test_data(cls, fname):
         # your code here
         data = []
-        with open(fname) as f:
+        with open(fname, encoding='utf-8') as f:
             for line in f:
                 inp = line[:-1]  # the last character is a newline
                 data.append(inp)
@@ -76,18 +79,18 @@ if __name__ == '__main__':
             print('Making working directory {}'.format(args.work_dir))
             os.makedirs(args.work_dir)
         print('Instatiating model')
-        model = MyModel()
+        model = TrieModel()
         print('Loading training data')
-        train_data = MyModel.load_training_data()
+        train_data = TrieModel.load_training_data(args.work_dir)
         print('Training')
         model.run_train(train_data, args.work_dir)
         print('Saving model')
         model.save(args.work_dir)
     elif args.mode == 'test':
         print('Loading model')
-        model = MyModel.load(args.work_dir)
+        model = TrieModel.load(args.work_dir)
         print('Loading test data from {}'.format(args.test_data))
-        test_data = MyModel.load_test_data(args.test_data)
+        test_data = TrieModel.load_test_data(args.test_data)
         print('Making predictions')
         pred = model.run_pred(test_data)
         print('Writing predictions to {}'.format(args.test_output))
