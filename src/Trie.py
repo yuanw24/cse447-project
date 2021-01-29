@@ -27,19 +27,19 @@ class TrieModel():
     root:  the root node.
     """
 
-    training_file = 'training/1b_benchmark.train.tokens'
+    training_file = 'work_dir/training/1b_benchmark.train.tokens'
 
     def __init__(self):
         self.root = Node()
 
     @classmethod
-    def load_training_data(cls, work_dir):
+    def load_training_data(cls):
         """
         Loads training data from TrieModel.training_file, split by line, then by whitespace
         :return: List[List[str]], training data
         """
         res = []
-        with open(os.path.join(work_dir, TrieModel.training_file), 'r', encoding='utf-8') as f:
+        with open(TrieModel.training_file, 'r', encoding='utf-8') as f:
             for line in f.readlines():
                 res.append(line.split())
         return res

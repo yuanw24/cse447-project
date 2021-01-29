@@ -81,7 +81,7 @@ if __name__ == '__main__':
         print('Instatiating model')
         model = TrieModel()
         print('Loading training data')
-        train_data = TrieModel.load_training_data(args.work_dir)
+        train_data = TrieModel.load_training_data()
         print('Training')
         model.run_train(train_data, args.work_dir)
         print('Saving model')
