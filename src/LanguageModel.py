@@ -1,15 +1,19 @@
 import os
-import string
 import random
+import string
 
 import torch
+from torch import nn
 from torch.utils.data import Dataset, DataLoader
-
 
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
 
-EMBEDDING_DIM = ""
+EMBEDDING_DIM = 32
+BATCH_SIZE = 32
+HIDDEN_DIM = 32
+N_RNN_LAYERS = 2
+LEARNING_RATE = 1e-3
 
 CUT = 32
 
@@ -24,6 +28,7 @@ class LMDataset(Dataset):
         tensorize dataset
         :param dataset:
         """
+
         def tensorize(dataset):
             """
 
@@ -32,9 +37,8 @@ class LMDataset(Dataset):
             :return:
             """
             pass
+
         self.x, self.y = tensorize(dataset)
-
-
 
     def __getitem__(self, idx):
         return self.x[idx], self.y[idx]
@@ -45,7 +49,12 @@ class LMDataset(Dataset):
 
 class RNNModel(nn.Module):
     """WEI"""
-    pass
+
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, n_labels, n_rnn_layers, pad_idx):
+        super().__init__()
+
+    def forward(self, data):
+        pass
 
 
 class LanguageModel:
@@ -53,10 +62,10 @@ class LanguageModel:
     def __init__(self):
         train_data = LanguageModel.load_training_data()
 
-        character_to_idx, idx_to_character = create_vocab(train_data)
+        character_to_idx, idx_to_character = self.create_vocab(train_data)
 
-        apply_vocab(train_data, character_to_idx)
-        apply_label(train_data, character_to_idx)  # 每一行最后一个字母就是label
+        self.apply_vocab(train_data, character_to_idx)
+        # apply_label(train_data, character_to_idx)  # 每一行最后一个字母就是label
 
         train_dataset = LMDataset(train_data)
 
@@ -68,11 +77,17 @@ class LanguageModel:
         self.model = RNNModel(
             len(character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(character_to_idx), N_RNN_LAYERS
         )
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def tokenize(self):
-
+    def apply_vocab(self, train_data, character_to_idx):
+        """
+        map character to int
+        :param train_data: List[str] -> change to -> List[List[int]]
+        :param character_to_idx: dict[str, int]
+        :return:
+        """
+        pass
 
     def create_vocab(self, train_data):
         """
@@ -115,7 +130,8 @@ class LanguageModel:
         def train(model, train_dataloader, optimizer, device):
             """YUAN"""
             pass
-        train(model, train_dataloader, optimizer, device)
+
+        train(self.model, self.train_dataloader, self.optimizer, self.device)
         pass
 
     def run_pred(self, data):
@@ -123,7 +139,8 @@ class LanguageModel:
         def evaluate(model, test_dataloader, device):
             """YUAN"""
             pass
-        evaluate(model, test_dataloader, device)
+
+        evaluate(self.model, self.test_dataloader, self.device)
 
         preds = []
         all_chars = string.ascii_letters
