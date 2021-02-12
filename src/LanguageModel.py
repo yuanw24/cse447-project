@@ -4,7 +4,10 @@ import string
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+
+from tqdm import tqdm
 
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
@@ -62,9 +65,9 @@ class LanguageModel:
     def __init__(self):
         train_data = LanguageModel.load_training_data()
 
-        character_to_idx, idx_to_character = self.create_vocab(train_data)
+        self.character_to_idx, self.idx_to_character = self.create_vocab(train_data)
 
-        self.apply_vocab(train_data, character_to_idx)
+        train_data = self.apply_vocab(train_data, self.character_to_idx)
         # apply_label(train_data, character_to_idx)  # 每一行最后一个字母就是label
 
         train_dataset = LMDataset(train_data)
@@ -75,7 +78,7 @@ class LanguageModel:
         """YiWEN"""
 
         self.model = RNNModel(
-            len(character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(character_to_idx), N_RNN_LAYERS
+            len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,9 +86,9 @@ class LanguageModel:
     def apply_vocab(self, train_data, character_to_idx):
         """
         map character to int
-        :param train_data: List[str] -> change to -> List[List[int]]
+        :param train_data: List[str] -> map to -> List[List[int]]
         :param character_to_idx: dict[str, int]
-        :return:
+        :return: List[List[int]]
         """
         pass
 
@@ -129,25 +132,42 @@ class LanguageModel:
         # your code here
         def train(model, train_dataloader, optimizer, device):
             """YUAN"""
-            pass
+            for texts, labels in tqdm(train_dataloader):
+                texts, labels = texts.to(device), labels.to(device)
+                output = model(texts)
+                loss = F.cross_entropy(output, labels)
+                model.zero_grad()
+                loss.backward(retain_graph=True)
+                optimizer.step()
 
         train(self.model, self.train_dataloader, self.optimizer, self.device)
         pass
 
     def run_pred(self, data):
         # your code here
-        def evaluate(model, test_dataloader, device):
-            """YUAN"""
-            pass
+        """YUAN"""
 
-        evaluate(self.model, self.test_dataloader, self.device)
+        def tensorize(test_data):
+            """
+            Tensorize the input data -> convert to list of tensors
+            :param test_data: List[List[int]]
+            :return: List[Tensor[int]]
+            """
+            res = []
+            for input in data:
+                res.append(torch.tensor(input).to(self.device))
+            return res
+
+        data = self.apply_vocab(data, self.character_to_idx)
+        data = tensorize(data)
 
         preds = []
-        all_chars = string.ascii_letters
-        for inp in data:
-            # this model just predicts a random character each time
-            top_guesses = [random.choice(all_chars) for _ in range(3)]
-            preds.append(''.join(top_guesses))
+        for input in data:
+            output = self.model(input)
+            predicted_idx = output.argsort(dim=-1)[:3]
+            predicted_char = [self.idx_to_character[idx] for idx in predicted_idx]
+            preds.append(''.join(predicted_char))
+
         return preds
 
     def save(self, work_dir):
