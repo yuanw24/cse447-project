@@ -6,6 +6,7 @@ import random
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 from Trie import TrieModel
+from LanguageModel import LanguageModel
 
 
 class MyModel:
@@ -79,18 +80,18 @@ if __name__ == '__main__':
             print('Making working directory {}'.format(args.work_dir))
             os.makedirs(args.work_dir)
         print('Instatiating model')
-        model = TrieModel()
+        model = LanguageModel()
         print('Loading training data')
-        train_data = TrieModel.load_training_data()
+        train_data = LanguageModel.load_training_data()
         print('Training')
-        model.run_train(train_data, args.work_dir)
+        model.run_train()
         print('Saving model')
         model.save(args.work_dir)
     elif args.mode == 'test':
         print('Loading model')
-        model = TrieModel.load(args.work_dir)
+        model = LanguageModel.load(args.work_dir)
         print('Loading test data from {}'.format(args.test_data))
-        test_data = TrieModel.load_test_data(args.test_data)
+        test_data = LanguageModel.load_test_data(args.test_data)
         print('Making predictions')
         pred = model.run_pred(test_data)
         print('Writing predictions to {}'.format(args.test_output))

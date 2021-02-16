@@ -20,6 +20,9 @@ LEARNING_RATE = 1e-3
 
 CUT = 32
 
+TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
+CHECKPOINT = 'model.checkpoint2'
+
 
 class LMDataset(Dataset):
     """
@@ -55,7 +58,7 @@ class LMDataset(Dataset):
 class RNNModel(nn.Module):
     """WEI"""
 
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, n_labels, n_rnn_layers, pad_idx):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, n_labels, n_rnn_layers):
         super().__init__()
 
     def forward(self, data):
@@ -64,8 +67,24 @@ class RNNModel(nn.Module):
 
 class LanguageModel:
 
-    def __init__(self):
-        path = "../work_dir/training/1b_benchmark.train.tokens"
+    def __init__(self, **kwargs):
+        if 'saved' in kwargs and 'model_state_dict' in kwargs:
+            print('Loading model from data')
+            saved = kwargs['saved']
+            model_state_dict = kwargs['model_state_dict']
+            self.character_to_idx = saved['character_to_idx']
+            self.idx_to_character = saved['idx_to_character']
+            self.model = RNNModel(
+                len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS
+            )
+            self.model.load_state_dict(model_state_dict)
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            print('Constructing a new model')
+            self.construct()
+
+    def construct(self):
+        path = TRAINING_PATH
         train_data = LanguageModel.load_training_data(path)
 
         self.character_to_idx, self.idx_to_character = self.create_vocab(train_data)
@@ -125,7 +144,7 @@ class LanguageModel:
         return character_to_idx, idx_to_character
 
     @classmethod
-    def load_training_data(cls):
+    def load_training_data(cls, path):
         """
         裁剪成32长度的str，不够的ignore
         read from training file, return
@@ -133,13 +152,9 @@ class LanguageModel:
         """
         # your code here
         # this particular model doesn't train
-        f = open(cls, "r")
         lines = []
-        while True:
-            line = f.readline()
-            if not line:
-                break
-            else:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
                 if len(line) >= 32:
                     line = line[:32]
                     lines.append(line)
@@ -161,7 +176,7 @@ class LanguageModel:
             for p in preds:
                 f.write('{}\n'.format(p))
 
-    def run_train(self, data, work_dir):
+    def run_train(self):
         # your code here
         def train(model, train_dataloader, optimizer, device):
             """YUAN"""
@@ -206,13 +221,19 @@ class LanguageModel:
     def save(self, work_dir):
         # your code here
         # this particular model has nothing to save, but for demonstration purposes we will save a blank file
-        with open(os.path.join(work_dir, 'model.checkpoint'), 'wt') as f:
-            f.write('dummy save')
+        save = dict(
+            torch_model_state_dict=self.model.state_dict(),
+            lm_dict=dict(
+                device=self.device,
+                character_to_idx=self.character_to_idx,
+                idx_to_character=self.idx_to_character
+            )
+        )
+        torch.save(save, os.path.join(work_dir, CHECKPOINT))
 
     @classmethod
     def load(cls, work_dir):
         # your code here
         # this particular model has nothing to load, but for demonstration purposes we will load a blank file
-        with open(os.path.join(work_dir, 'model.checkpoint')) as f:
-            dummy_save = f.read()
-        return LanguageModel()
+        save = torch.load(os.path.join(work_dir, CHECKPOINT))
+        return LanguageModel(saved=save['lm_dict'], model_state_dict=save['torch_model_state_dict'])
