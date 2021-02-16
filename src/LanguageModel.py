@@ -39,7 +39,9 @@ class LMDataset(Dataset):
              x-> len(dataset) * 31的tensor（int），y->len(dataset)的tensor（int)
             :return:
             """
-            pass
+            x_value = [torch.tensor(line[:31], dtype=torch.long) for line in dataset]
+            y_value = [torch.tensor(line[-1], dtype=torch.long) for line in dataset]
+            return torch.stack(x_value, dim=0), torch.stack(y_value, dim=0)
 
         self.x, self.y = tensorize(dataset)
 
@@ -63,7 +65,8 @@ class RNNModel(nn.Module):
 class LanguageModel:
 
     def __init__(self):
-        train_data = LanguageModel.load_training_data()
+        path = "../work_dir/training/1b_benchmark.train.tokens"
+        train_data = LanguageModel.load_training_data(path)
 
         self.character_to_idx, self.idx_to_character = self.create_vocab(train_data)
 
@@ -90,7 +93,13 @@ class LanguageModel:
         :param character_to_idx: dict[str, int]
         :return: List[List[int]]
         """
-        pass
+        idx_data = []
+        for line in train_data:
+            idx_line = []
+            for j in range(len(line)):
+                idx_line.append(character_to_idx[line[j]])
+            idx_data.append(idx_line)
+        return idx_data
 
     def create_vocab(self, train_data):
         """
@@ -100,6 +109,20 @@ class LanguageModel:
         character_to_idx: dict[Char, Int],
         idx_to_character: dict[Int, Char]
         """
+        character_to_idx = {}
+        idx_to_character = {}
+        character_to_idx["@@PAD@@"] = 0
+        character_to_idx["@@UNK@@"] = 1
+        idx_to_character[0] = "@@PAD@@"
+        idx_to_character[1] = "@@UNK@@"
+        i = 2
+        for line in train_data:
+            for j in range(len(line)):
+                if line[j] not in character_to_idx.keys():
+                    character_to_idx[line[j]] = i
+                    idx_to_character[i] = line[j]
+                    i += 1
+        return character_to_idx, idx_to_character
 
     @classmethod
     def load_training_data(cls):
@@ -110,7 +133,17 @@ class LanguageModel:
         """
         # your code here
         # this particular model doesn't train
-        return []
+        f = open(cls, "r")
+        lines = []
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            else:
+                if len(line) >= 32:
+                    line = line[:32]
+                    lines.append(line)
+        return lines
 
     @classmethod
     def load_test_data(cls, fname):
