@@ -13,13 +13,15 @@ from tqdm import tqdm
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
 
-EMBEDDING_DIM = 4
+EMBEDDING_DIM = 16
 BATCH_SIZE = 32
 HIDDEN_DIM = 32
 N_RNN_LAYERS = 2
 LEARNING_RATE = 1e-3
 
-EPOCH = 5
+USE_LSTM = True
+
+EPOCH = 20
 
 CUT = 128
 
@@ -91,18 +93,21 @@ class RNNModel(nn.Module):
         :param data:
         :return:
         """
-        embeds = self.encoder(data)
-        _, hidden = self.gru(embeds)
-        hidden = hidden.transpose(0, 1).reshape(hidden.shape[1], -1)
-        return self.output(hidden)
-        # embeds = self.dropout(embeds)
-        # _, hiddenx = self.lstm(embeds, None)
-        # hidden_state = hidden[0]
+        if USE_LSTM:
+            # embeds = self.dropout(embeds)
+            embeds = self.encoder(data)
+            output, hiddenx = self.lstm(embeds, None)
 
-        # output = self.linear(hiddenx[0][-1, :, :])
+            linear_output = self.linear(output[:, -1, :])
 
-        # output = self.activation(output)
-        # return output
+            # output = self.activation(output)
+            return linear_output
+        else:
+            embeds = self.encoder(data)
+            _, hidden = self.gru(embeds)
+            hidden = hidden.transpose(0, 1).reshape(hidden.shape[1], -1)
+            return self.output(hidden)
+
 
 
 class LanguageModel:
@@ -179,7 +184,7 @@ class LanguageModel:
         i = 2
         for line in train_data:
             for j in range(len(line)):
-                if line[j] not in character_to_idx.keys() and line[j].isascii() and line[j].isalpha():
+                if line[j] not in character_to_idx.keys():
                     character_to_idx[line[j]] = i
                     idx_to_character[i] = line[j]
                     i += 1
@@ -260,7 +265,9 @@ class LanguageModel:
         with torch.no_grad():
             for input in data:
                 output = self.model(input.reshape(1, -1)).reshape(-1)
-                predicted_idx = output.argsort(dim=-1)[:3]
+                predicted_idx = output.argsort(dim=-1, descending=True)[:5]
+                predicted_idx = list(filter(lambda idx: self.idx_to_character[idx.item()] != UNK
+                                                        and self.idx_to_character[idx.item()] != PAD, predicted_idx))[:3]
                 predicted_char = [self.idx_to_character[idx.item()] for idx in predicted_idx]
                 preds.append(''.join(predicted_char))
 
