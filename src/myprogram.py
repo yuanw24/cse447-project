@@ -82,7 +82,7 @@ if __name__ == '__main__':
         print('Instatiating model')
         model = LanguageModel()
         print('Loading training data')
-        train_data = LanguageModel.load_training_data()
+        # train_data = LanguageModel.load_training_data()
         print('Training')
         model.run_train()
         print('Saving model')

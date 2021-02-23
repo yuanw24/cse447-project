@@ -13,13 +13,15 @@ from tqdm import tqdm
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
 
-EMBEDDING_DIM = 32
+EMBEDDING_DIM = 4
 BATCH_SIZE = 32
 HIDDEN_DIM = 32
 N_RNN_LAYERS = 2
 LEARNING_RATE = 1e-3
 
-CUT = 32
+EPOCH = 5
+
+CUT = 128
 
 TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
 CHECKPOINT = 'model.checkpoint2'
@@ -43,7 +45,7 @@ class LMDataset(Dataset):
              x-> len(dataset) * 31的tensor（int），y->len(dataset)的tensor（int)
             :return:
             """
-            x_value = [torch.tensor(line[:31], dtype=torch.long) for line in dataset]
+            x_value = [torch.tensor(line[:CUT - 1], dtype=torch.long) for line in dataset]
             y_value = [torch.tensor(line[-1], dtype=torch.long) for line in dataset]
             return torch.stack(x_value, dim=0), torch.stack(y_value, dim=0)
 
@@ -59,7 +61,7 @@ class LMDataset(Dataset):
 class RNNModel(nn.Module):
     """WEI"""
 
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, n_labels, n_rnn_layers):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, n_labels, n_rnn_layers, device):
         """
         :param vocab_size: vocabulary size
         :param embedding_dim: embedding dimension
@@ -70,14 +72,18 @@ class RNNModel(nn.Module):
         """
         super(RNNModel, self).__init__()
         self.encoder = nn.Embedding(vocab_size, embedding_dim)
-        drop_rate = 0.5
-        self.dropout = nn.Dropout(drop_rate)
-        self.rnn = nn.LSTM(embedding_dim, hidden_dim, n_rnn_layers, dropout=drop_rate, batch_first=True, bidirectional=True)
+        # drop_rate = 0.5
+        # self.dropout = nn.Dropout(drop_rate)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, n_rnn_layers, batch_first=True, bidirectional=False)
+        self.gru = nn.GRU(embedding_dim, hidden_dim, num_layers=n_rnn_layers, batch_first=True, bidirectional=True)
+        layered_hidden_dim = hidden_dim * n_rnn_layers * 2
+        self.output = nn.Linear(layered_hidden_dim, n_labels)
+
         self.linear = nn.Linear(hidden_dim, n_labels)
         self.activation = nn.Softmax()
 
-        hidden_state = Variable(torch.zeros(BATCH_SIZE, hidden_dim))
-        cell_state = Variable(torch.zeros(BATCH_SIZE, hidden_dim))
+        hidden_state = Variable(torch.randn(n_rnn_layers, BATCH_SIZE, hidden_dim).to(device))
+        cell_state = Variable(torch.randn(n_rnn_layers, BATCH_SIZE, hidden_dim).to(device))
         self.hidden = (hidden_state, cell_state)
 
     def forward(self, data):
@@ -86,12 +92,17 @@ class RNNModel(nn.Module):
         :return:
         """
         embeds = self.encoder(data)
-        embeds = self.dropout(embeds)
-        output, self.hidden = self.lstm(embeds, self.hidden)
-        hidden_state = self.hidden[0]
-        output = self.linear(hidden_state[-1])
-        output = self.activation(output)
-        return output
+        _, hidden = self.gru(embeds)
+        hidden = hidden.transpose(0, 1).reshape(hidden.shape[1], -1)
+        return self.output(hidden)
+        # embeds = self.dropout(embeds)
+        # _, hiddenx = self.lstm(embeds, None)
+        # hidden_state = hidden[0]
+
+        # output = self.linear(hiddenx[0][-1, :, :])
+
+        # output = self.activation(output)
+        # return output
 
 
 class LanguageModel:
@@ -103,11 +114,12 @@ class LanguageModel:
             model_state_dict = kwargs['model_state_dict']
             self.character_to_idx = saved['character_to_idx']
             self.idx_to_character = saved['idx_to_character']
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = RNNModel(
-                len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS
+                len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS, self.device
             )
             self.model.load_state_dict(model_state_dict)
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.model = self.model.to(self.device)
         else:
             print('Constructing a new model')
             self.construct()
@@ -127,12 +139,13 @@ class LanguageModel:
             train_dataset, batch_size=BATCH_SIZE, shuffle=True
         )
         """YiWEN"""
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = RNNModel(
-            len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS
+            len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS, self.device
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = self.model.to(self.device)
 
     def apply_vocab(self, train_data, character_to_idx):
         """
@@ -145,7 +158,7 @@ class LanguageModel:
         for line in train_data:
             idx_line = []
             for j in range(len(line)):
-                idx_line.append(character_to_idx[line[j]])
+                idx_line.append(character_to_idx.get(line[j]) or character_to_idx[UNK])
             idx_data.append(idx_line)
         return idx_data
 
@@ -166,14 +179,14 @@ class LanguageModel:
         i = 2
         for line in train_data:
             for j in range(len(line)):
-                if line[j] not in character_to_idx.keys():
+                if line[j] not in character_to_idx.keys() and line[j].isascii() and line[j].isalpha():
                     character_to_idx[line[j]] = i
                     idx_to_character[i] = line[j]
                     i += 1
         return character_to_idx, idx_to_character
 
     @classmethod
-    def load_training_data(cls, path):
+    def load_training_data(cls, path=TRAINING_PATH):
         """
         裁剪成32长度的str，不够的ignore
         read from training file, return
@@ -184,8 +197,8 @@ class LanguageModel:
         lines = []
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
-                if len(line) >= 32:
-                    line = line[:32]
+                if len(line) >= CUT:
+                    line = line[:CUT]
                     lines.append(line)
         return lines
 
@@ -201,7 +214,7 @@ class LanguageModel:
 
     @classmethod
     def write_pred(cls, preds, fname):
-        with open(fname, 'wt') as f:
+        with open(fname, 'w', encoding='utf-8') as f:
             for p in preds:
                 f.write('{}\n'.format(p))
 
@@ -209,16 +222,21 @@ class LanguageModel:
         # your code here
         def train(model, train_dataloader, optimizer, device):
             """YUAN"""
+            model.train()
             for texts, labels in tqdm(train_dataloader):
                 texts, labels = texts.to(device), labels.to(device)
+                # print(texts)
                 output = model(texts)
                 loss = F.cross_entropy(output, labels)
                 model.zero_grad()
                 loss.backward(retain_graph=True)
                 optimizer.step()
 
-        train(self.model, self.train_dataloader, self.optimizer, self.device)
-        pass
+            print(f'loss: {loss}')
+
+        for epoch in range(EPOCH):
+            train(self.model, self.train_dataloader, self.optimizer, self.device)
+
 
     def run_pred(self, data):
         # your code here
@@ -239,11 +257,12 @@ class LanguageModel:
         data = tensorize(data)
 
         preds = []
-        for input in data:
-            output = self.model(input)
-            predicted_idx = output.argsort(dim=-1)[:3]
-            predicted_char = [self.idx_to_character[idx] for idx in predicted_idx]
-            preds.append(''.join(predicted_char))
+        with torch.no_grad():
+            for input in data:
+                output = self.model(input.reshape(1, -1)).reshape(-1)
+                predicted_idx = output.argsort(dim=-1)[:3]
+                predicted_char = [self.idx_to_character[idx.item()] for idx in predicted_idx]
+                preds.append(''.join(predicted_char))
 
         return preds
 
