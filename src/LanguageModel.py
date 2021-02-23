@@ -4,6 +4,7 @@ import string
 
 import torch
 from torch import nn
+from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
@@ -59,10 +60,38 @@ class RNNModel(nn.Module):
     """WEI"""
 
     def __init__(self, vocab_size, embedding_dim, hidden_dim, n_labels, n_rnn_layers):
-        super().__init__()
+        """
+        :param vocab_size: vocabulary size
+        :param embedding_dim: embedding dimension
+        :param hidden_dim: hidden dimension
+        :param n_labels: number of labels
+        :param n_rnn_layers: number of rnn layers
+        :param drop_rate: dropout rate
+        """
+        super(RNNModel, self).__init__()
+        self.encoder = nn.Embedding(vocab_size, embedding_dim)
+        drop_rate = 0.5
+        self.dropout = nn.Dropout(drop_rate)
+        self.rnn = nn.LSTM(embedding_dim, hidden_dim, n_rnn_layers, dropout=drop_rate, batch_first=True, bidirectional=True)
+        self.linear = nn.Linear(hidden_dim, n_labels)
+        self.activation = nn.Softmax()
+
+        hidden_state = Variable(torch.zeros(BATCH_SIZE, hidden_dim))
+        cell_state = Variable(torch.zeros(BATCH_SIZE, hidden_dim))
+        self.hidden = (hidden_state, cell_state)
 
     def forward(self, data):
-        pass
+        """
+        :param data:
+        :return:
+        """
+        embeds = self.encoder(data)
+        embeds = self.dropout(embeds)
+        output, self.hidden = self.lstm(embeds, self.hidden)
+        hidden_state = self.hidden[0]
+        output = self.linear(hidden_state[-1])
+        output = self.activation(output)
+        return output
 
 
 class LanguageModel:
