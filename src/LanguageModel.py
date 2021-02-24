@@ -13,7 +13,7 @@ from tqdm import tqdm
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
 
-EMBEDDING_DIM = 16
+EMBEDDING_DIM = 4
 BATCH_SIZE = 32
 HIDDEN_DIM = 32
 N_RNN_LAYERS = 2
@@ -21,11 +21,12 @@ LEARNING_RATE = 1e-3
 
 USE_LSTM = True
 
-EPOCH = 20
+EPOCH = 5
 
 CUT = 128
 
-TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
+# TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
+TRAINING_PATH = "work_dir/training-monolingual/news.2011.en.shuffled"
 CHECKPOINT = 'model.checkpoint2'
 
 
