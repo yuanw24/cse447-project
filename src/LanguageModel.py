@@ -11,10 +11,10 @@ from torch.utils.data import Dataset, DataLoader
 
 from tqdm import tqdm
 
-
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
-
+PAD_IDX = 0
+UNK_IDX = 1
 UNK_LIMIT = 2
 
 EMBEDDING_DIM = 16
@@ -24,12 +24,10 @@ N_RNN_LAYERS = 2
 LEARNING_RATE = 1e-1
 
 USE_LSTM = True
-
 DEBUGGING = True
 
 EPOCH = 5
-
-CUT = 128
+CUT = 0
 
 # TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
 TRAINING_PATH = "work_dir/training-monolingual/en.filtered"
@@ -41,30 +39,39 @@ class LMDataset(Dataset):
     create dataset
     """
 
-    def __init__(self, dataset):
+    def __init__(self, dataset, pad_idx):
         """
         tensorize dataset
-        :param dataset:
+        :param dataset: List[List[int]]
         """
-
-        def tensorize(dataset):
-            """
-
-            :param dataset: List[str], len(str)=32,
-             x-> len(dataset) * 31的tensor（int），y->len(dataset)的tensor（int)
-            :return:
-            """
-            x_value = [torch.tensor(line[:-1], dtype=torch.long) for line in dataset]
-            y_value = [torch.tensor(line[-1], dtype=torch.long) for line in dataset]
-            return torch.stack(x_value, dim=0), torch.stack(y_value, dim=0)
-
-        self.x, self.y = tensorize(dataset)
+        dataset = sorted(dataset, key=lambda data: len(data))
+        self.text = [inst[:-1] for inst in dataset]
+        self.label = [inst[-1] for inst in dataset]
+        self.pad_idx = pad_idx
 
     def __getitem__(self, idx):
-        return self.x[idx], self.y[idx]
+        return self.text[idx], self.label[idx]
 
     def __len__(self):
-        return len(self.x)
+        return len(self.text)
+
+    def collate_fn(self, batch):
+        def tensorize(elements, dtype):
+            return [torch.tensor(element, dtype=dtype) for element in elements]
+
+        def pad(tensors):
+            """Assumes 1-d tensors."""
+            max_len = max(len(tensor) for tensor in tensors)
+            padded_tensors = [
+                F.pad(tensor, (0, max_len - len(tensor)), value=self.pad_idx) for tensor in tensors
+            ]
+            return padded_tensors
+
+        texts, labels = zip(*batch)
+        return [
+            torch.stack(pad(tensorize(texts, torch.long)), dim=0),
+            torch.stack(tensorize(labels, torch.long), dim=0),
+        ]
 
 
 class RNNModel(nn.Module):
@@ -77,7 +84,6 @@ class RNNModel(nn.Module):
         :param hidden_dim: hidden dimension
         :param n_labels: number of labels
         :param n_rnn_layers: number of rnn layers
-        :param drop_rate: dropout rate
         """
         super(RNNModel, self).__init__()
         self.encoder = nn.Embedding(vocab_size, embedding_dim)
@@ -100,26 +106,34 @@ class RNNModel(nn.Module):
         :param data:
         :return:
         """
+        non_padded_positions = data != PAD_IDX
+        lens = non_padded_positions.sum(dim=1)
+        embedded = self.encoder(data)
+        packed_embedded = nn.utils.rnn.pack_padded_sequence(
+            embedded, lens.cpu(), batch_first=True, enforce_sorted=False
+        )
+
         if USE_LSTM:
-            # embeds = self.dropout(embeds)
-            embeds = self.encoder(data)
-            output, (h_n, h_c) = self.lstm(embeds, None)
-
+            output, (h_n, h_c) = self.lstm(packed_embedded, None)
             linear_output = self.linear(h_n[-1, :, :])
-
             # output = self.activation(output)
             return linear_output
         else:
-            embeds = self.encoder(data)
-            _, hidden = self.gru(embeds)
+            _, hidden = self.gru(embedded)
             hidden = hidden.transpose(0, 1).reshape(hidden.shape[1], -1)
             return self.output(hidden)
-
 
 
 class LanguageModel:
 
     def __init__(self, **kwargs):
+        self.character_to_idx = None
+        self.idx_to_character = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = None
+        self.train_dataloader = None
+        self.optimizer = None
+
         if 'saved' in kwargs and 'model_state_dict' in kwargs:
             print('Loading model from data')
             saved = kwargs['saved']
@@ -127,39 +141,35 @@ class LanguageModel:
             self.character_to_idx = saved['character_to_idx']
             self.idx_to_character = saved['idx_to_character']
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self.model = RNNModel(
-                len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS, self.device
+            model = RNNModel(
+                len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS,
+                self.device
             )
-            self.model.load_state_dict(model_state_dict)
-            self.model = self.model.to(self.device)
+            model.load_state_dict(model_state_dict)
+            self.model = model.to(self.device)
         else:
             print('Constructing a new model')
             self.construct()
 
     def construct(self):
         path = TRAINING_PATH
-        print('Load Training Data')
+        # print('Load Training Data')
         train_data = LanguageModel.load_training_data(path)
-
         self.character_to_idx, self.idx_to_character = self.create_vocab(train_data)
-
         train_data = self.apply_vocab(train_data, self.character_to_idx)
-        # apply_label(train_data, character_to_idx)  # 每一行最后一个字母就是label
 
-        train_dataset = LMDataset(train_data)
-
+        train_dataset = LMDataset(train_data, pad_idx=PAD_IDX)
         self.train_dataloader = DataLoader(
-            train_dataset, batch_size=BATCH_SIZE, shuffle=True
+            train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=train_dataset.collate_fn
         )
+
         """YiWEN"""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         self.model = RNNModel(
             len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS, self.device
-        )
+        ).to(self.device)
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=LEARNING_RATE, momentum=0.9)
-        self.model = self.model.to(self.device)
 
     def apply_vocab(self, train_data, character_to_idx):
         """
@@ -168,6 +178,7 @@ class LanguageModel:
         :param character_to_idx: dict[str, int]
         :return: List[List[int]]
         """
+        print('Applying Vocab')
         idx_data = []
         for line in tqdm(train_data):
             idx_line = []
@@ -184,12 +195,13 @@ class LanguageModel:
         character_to_idx: dict[Char, Int],
         idx_to_character: dict[Int, Char]
         """
+        print('Creating Vocab')
         character_to_idx = {}
         idx_to_character = {}
-        character_to_idx["@@PAD@@"] = 0
-        character_to_idx["@@UNK@@"] = 1
-        idx_to_character[0] = "@@PAD@@"
-        idx_to_character[1] = "@@UNK@@"
+        character_to_idx[PAD] = PAD_IDX
+        character_to_idx[UNK] = PAD_IDX
+        idx_to_character[PAD_IDX] = PAD
+        idx_to_character[UNK_IDX] = UNK
         i = 2
 
         # counter = Counter()
@@ -225,9 +237,9 @@ class LanguageModel:
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if len(line) >= CUT:
+                if CUT:
                     line = line[:CUT]
-                    lines.append(line)
+                lines.append(line)
         return lines
 
     @classmethod
@@ -273,7 +285,6 @@ class LanguageModel:
             print(f'Epoch: {epoch}')
             train(self.model, self.train_dataloader, self.optimizer, self.device)
 
-
     def run_pred(self, data):
         # your code here
         """YUAN"""
@@ -298,7 +309,8 @@ class LanguageModel:
                 output = self.model(input.reshape(1, -1)).reshape(-1)
                 predicted_idx = output.argsort(dim=-1, descending=True)[:5]
                 predicted_idx = list(filter(lambda idx: self.idx_to_character[idx.item()] != UNK
-                                                        and self.idx_to_character[idx.item()] != PAD, predicted_idx))[:3]
+                                                        and self.idx_to_character[idx.item()] != PAD, predicted_idx))[
+                                :3]
                 predicted_char = [self.idx_to_character[idx.item()] for idx in predicted_idx]
                 preds.append(''.join(predicted_char))
 
