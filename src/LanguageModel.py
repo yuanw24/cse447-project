@@ -1,6 +1,7 @@
 import os
 import random
 import string
+from collections import Counter
 
 import torch
 from torch import nn
@@ -10,23 +11,28 @@ from torch.utils.data import Dataset, DataLoader
 
 from tqdm import tqdm
 
+
 PAD = "@@PAD@@"
 UNK = "@@UNK@@"
 
-EMBEDDING_DIM = 4
-BATCH_SIZE = 32
-HIDDEN_DIM = 32
+UNK_LIMIT = 2
+
+EMBEDDING_DIM = 16
+BATCH_SIZE = 512
+HIDDEN_DIM = 64
 N_RNN_LAYERS = 2
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-1
 
 USE_LSTM = True
+
+DEBUGGING = True
 
 EPOCH = 5
 
 CUT = 128
 
 # TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
-TRAINING_PATH = "work_dir/training-monolingual/news.2011.en.shuffled"
+TRAINING_PATH = "work_dir/training-monolingual/en.filtered"
 CHECKPOINT = 'model.checkpoint2'
 
 
@@ -48,7 +54,7 @@ class LMDataset(Dataset):
              x-> len(dataset) * 31的tensor（int），y->len(dataset)的tensor（int)
             :return:
             """
-            x_value = [torch.tensor(line[:CUT - 1], dtype=torch.long) for line in dataset]
+            x_value = [torch.tensor(line[:-1], dtype=torch.long) for line in dataset]
             y_value = [torch.tensor(line[-1], dtype=torch.long) for line in dataset]
             return torch.stack(x_value, dim=0), torch.stack(y_value, dim=0)
 
@@ -97,9 +103,9 @@ class RNNModel(nn.Module):
         if USE_LSTM:
             # embeds = self.dropout(embeds)
             embeds = self.encoder(data)
-            output, hiddenx = self.lstm(embeds, None)
+            output, (h_n, h_c) = self.lstm(embeds, None)
 
-            linear_output = self.linear(output[:, -1, :])
+            linear_output = self.linear(h_n[-1, :, :])
 
             # output = self.activation(output)
             return linear_output
@@ -132,6 +138,7 @@ class LanguageModel:
 
     def construct(self):
         path = TRAINING_PATH
+        print('Load Training Data')
         train_data = LanguageModel.load_training_data(path)
 
         self.character_to_idx, self.idx_to_character = self.create_vocab(train_data)
@@ -150,7 +157,8 @@ class LanguageModel:
         self.model = RNNModel(
             len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS, self.device
         )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LEARNING_RATE)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=LEARNING_RATE, momentum=0.9)
         self.model = self.model.to(self.device)
 
     def apply_vocab(self, train_data, character_to_idx):
@@ -161,7 +169,7 @@ class LanguageModel:
         :return: List[List[int]]
         """
         idx_data = []
-        for line in train_data:
+        for line in tqdm(train_data):
             idx_line = []
             for j in range(len(line)):
                 idx_line.append(character_to_idx.get(line[j]) or character_to_idx[UNK])
@@ -183,7 +191,20 @@ class LanguageModel:
         idx_to_character[0] = "@@PAD@@"
         idx_to_character[1] = "@@UNK@@"
         i = 2
-        for line in train_data:
+
+        # counter = Counter()
+        #
+        # for line in tqdm(train_data):
+        #     for i in range(len(line)):
+        #         counter.update(line[i])
+        #
+        # for k, v in counter.items():
+        #     if v >= UNK_LIMIT:
+        #         character_to_idx[k] = i
+        #         idx_to_character[i] = k
+        #         i += 1
+        #
+        for line in tqdm(train_data):
             for j in range(len(line)):
                 if line[j] not in character_to_idx.keys():
                     character_to_idx[line[j]] = i
@@ -203,6 +224,7 @@ class LanguageModel:
         lines = []
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
+                line = line.strip()
                 if len(line) >= CUT:
                     line = line[:CUT]
                     lines.append(line)
@@ -216,6 +238,9 @@ class LanguageModel:
             for line in f:
                 inp = line[:-1]  # the last character is a newline
                 data.append(inp)
+        if DEBUGGING:
+            data = data[:10000]
+
         return data
 
     @classmethod
@@ -228,19 +253,24 @@ class LanguageModel:
         # your code here
         def train(model, train_dataloader, optimizer, device):
             """YUAN"""
+            total_loss = 0
+            batch_idx = 1
             model.train()
             for texts, labels in tqdm(train_dataloader):
+                optimizer.zero_grad()
                 texts, labels = texts.to(device), labels.to(device)
                 # print(texts)
                 output = model(texts)
                 loss = F.cross_entropy(output, labels)
-                model.zero_grad()
+                # model.zero_grad()
                 loss.backward(retain_graph=True)
                 optimizer.step()
-
-            print(f'loss: {loss}')
+                total_loss += loss.item()
+                batch_idx += 1
+                print(f'Batch {batch_idx}: {total_loss / batch_idx}')
 
         for epoch in range(EPOCH):
+            print(f'Epoch: {epoch}')
             train(self.model, self.train_dataloader, self.optimizer, self.device)
 
 
@@ -264,7 +294,7 @@ class LanguageModel:
 
         preds = []
         with torch.no_grad():
-            for input in data:
+            for input in tqdm(data):
                 output = self.model(input.reshape(1, -1)).reshape(-1)
                 predicted_idx = output.argsort(dim=-1, descending=True)[:5]
                 predicted_idx = list(filter(lambda idx: self.idx_to_character[idx.item()] != UNK

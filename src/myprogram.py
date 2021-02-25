@@ -81,7 +81,7 @@ if __name__ == '__main__':
             os.makedirs(args.work_dir)
         print('Instatiating model')
         model = LanguageModel()
-        print('Loading training data')
+        # print('Loading training data')
         # train_data = LanguageModel.load_training_data()
         print('Training')
         model.run_train()
