@@ -183,7 +183,7 @@ class LanguageModel:
         for line in tqdm(train_data):
             idx_line = []
             for j in range(len(line)):
-                idx_line.append(character_to_idx.get(line[j]) or character_to_idx[UNK])
+                idx_line.append(character_to_idx.get(line[j]) or UNK_IDX)
             idx_data.append(idx_line)
         return idx_data
 
@@ -204,24 +204,31 @@ class LanguageModel:
         idx_to_character[UNK_IDX] = UNK
         i = 2
 
-        # counter = Counter()
-        #
-        # for line in tqdm(train_data):
-        #     for i in range(len(line)):
-        #         counter.update(line[i])
-        #
+        counter = Counter()
+
+        for line in tqdm(train_data):
+            for j in range(len(line)):
+                if line[j] not in character_to_idx:
+                    if line[j] in counter and counter.get(line[j]) >= UNK_LIMIT:
+                        character_to_idx[line[j]] = i
+                        idx_to_character[i] = line[j]
+                        i += 1
+                        counter.pop(line[j])
+                    else:
+                        counter.update(line[j])
+
         # for k, v in counter.items():
         #     if v >= UNK_LIMIT:
         #         character_to_idx[k] = i
         #         idx_to_character[i] = k
         #         i += 1
         #
-        for line in tqdm(train_data):
-            for j in range(len(line)):
-                if line[j] not in character_to_idx.keys():
-                    character_to_idx[line[j]] = i
-                    idx_to_character[i] = line[j]
-                    i += 1
+        # for line in tqdm(train_data):
+        #     for j in range(len(line)):
+        #         if line[j] not in character_to_idx.keys():
+        #             character_to_idx[line[j]] = i
+        #             idx_to_character[i] = line[j]
+        #             i += 1
         return character_to_idx, idx_to_character
 
     @classmethod
