@@ -15,7 +15,7 @@ PAD = "@@PAD@@"
 UNK = "@@UNK@@"
 PAD_IDX = 0
 UNK_IDX = 1
-UNK_LIMIT = 2
+UNK_LIMIT = 5
 
 EMBEDDING_DIM = 16
 BATCH_SIZE = 512
@@ -24,13 +24,14 @@ N_RNN_LAYERS = 2
 LEARNING_RATE = 1e-1
 
 USE_LSTM = True
-DEBUGGING = True
+DEBUGGING = False
 
-EPOCH = 5
-CUT = 0
+EPOCH = 20
 
 # TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
-TRAINING_PATH = "work_dir/training-monolingual/en.filtered"
+# LANGS = []
+TRAINING_PATH = "work_dir/training-monolingual/{}.filtered"
+LANGS = ['en', 'cs', 'de', 'fr', 'es']
 CHECKPOINT = 'model.checkpoint2'
 
 
@@ -241,12 +242,21 @@ class LanguageModel:
         # your code here
         # this particular model doesn't train
         lines = []
-        with open(path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if CUT:
-                    line = line[:CUT]
-                lines.append(line)
+        if LANGS:
+            for lang in LANGS:
+                with open(path.format(lang), 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if len(line) > 2:
+                            line = line[:random.randint(2, len(line))]
+                            lines.append(line)
+        else:
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if len(line) > 2:
+                        line = line[:random.randint(2, len(line))]
+                        lines.append(line)
         return lines
 
     @classmethod
@@ -286,7 +296,7 @@ class LanguageModel:
                 optimizer.step()
                 total_loss += loss.item()
                 batch_idx += 1
-                print(f'Batch {batch_idx}: {total_loss / batch_idx}')
+            print(f'Total loss: {total_loss / batch_idx}')
 
         for epoch in range(EPOCH):
             print(f'Epoch: {epoch}')
