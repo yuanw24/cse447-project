@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 
 from tqdm import tqdm
 
@@ -26,13 +26,15 @@ LEARNING_RATE = 1e-1
 USE_LSTM = True
 DEBUGGING = False
 
-EPOCH = 20
+EPOCH = 5
+
+CUT = 128
 
 # TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
 # LANGS = []
 TRAINING_PATH = "work_dir/training-monolingual/{}.filtered"
 LANGS = ['en', 'cs', 'de', 'fr', 'es']
-CHECKPOINT = 'model.checkpoint2'
+CHECKPOINT = 'model.checkpoint2.64'
 
 
 class LMDataset(Dataset):
@@ -40,13 +42,19 @@ class LMDataset(Dataset):
     create dataset
     """
 
-    def __init__(self, dataset, pad_idx):
+    def __init__(self, dataset, pad_idx, sort=True, ignoreLast=True):
         """
         tensorize dataset
         :param dataset: List[List[int]]
         """
-        dataset = sorted(dataset, key=lambda data: len(data))
-        self.text = [inst[:-1] for inst in dataset]
+        if sort:
+            dataset = sorted(dataset, key=lambda data: len(data))
+
+        if ignoreLast:
+            self.text = [inst[:-1] for inst in dataset]
+        else:
+            self.text = dataset
+
         self.label = [inst[-1] for inst in dataset]
         self.pad_idx = pad_idx
 
@@ -248,14 +256,14 @@ class LanguageModel:
                     for line in f:
                         line = line.strip()
                         if len(line) > 2:
-                            line = line[:random.randint(2, len(line))]
+                            line = line[:CUT]
                             lines.append(line)
         else:
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     if len(line) > 2:
-                        line = line[:random.randint(2, len(line))]
+                        line = line[:CUT]
                         lines.append(line)
         return lines
 
@@ -313,23 +321,26 @@ class LanguageModel:
             :return: List[Tensor[int]]
             """
             res = []
-            for input in data:
+            for input in test_data:
                 res.append(torch.tensor(input).to(self.device))
             return res
 
         data = self.apply_vocab(data, self.character_to_idx)
-        data = tensorize(data)
+        dataset = LMDataset(data, pad_idx=PAD_IDX, sort=False, ignoreLast=False)
+        data_loader = DataLoader(dataset, shuffle=False, batch_size=BATCH_SIZE, collate_fn=dataset.collate_fn)
 
         preds = []
         with torch.no_grad():
-            for input in tqdm(data):
-                output = self.model(input.reshape(1, -1)).reshape(-1)
-                predicted_idx = output.argsort(dim=-1, descending=True)[:5]
-                predicted_idx = list(filter(lambda idx: self.idx_to_character[idx.item()] != UNK
-                                                        and self.idx_to_character[idx.item()] != PAD, predicted_idx))[
-                                :3]
-                predicted_char = [self.idx_to_character[idx.item()] for idx in predicted_idx]
-                preds.append(''.join(predicted_char))
+            for input, _ in tqdm(data_loader):
+                input = input.to(self.device)
+                outputs = self.model(input)
+                for output in outputs:
+                    predicted_idx = output.argsort(dim=-1, descending=True)[:5]
+                    predicted_idx = list(filter(lambda idx: self.idx_to_character[idx.item()] != UNK
+                                                            and self.idx_to_character[idx.item()] != PAD, predicted_idx))[
+                                    :3]
+                    predicted_char = [self.idx_to_character[idx.item()] for idx in predicted_idx]
+                    preds.append(''.join(predicted_char))
 
         return preds
 
