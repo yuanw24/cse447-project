@@ -28,13 +28,13 @@ DEBUGGING = False
 
 EPOCH = 5
 
-CUT = 128
+CUT = 64
 
 # TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
 # LANGS = []
 TRAINING_PATH = "work_dir/training-monolingual/{}.filtered"
 LANGS = ['en', 'cs', 'de', 'fr', 'es']
-CHECKPOINT = 'model.checkpoint2.128'
+CHECKPOINT = 'model.checkpoint2.simplecut64'
 
 
 class LMDataset(Dataset):
@@ -255,14 +255,14 @@ class LanguageModel:
                 with open(path.format(lang), 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
-                        if len(line) > 2:
+                        if len(line) >= CUT:
                             line = line[:CUT]
                             lines.append(line)
         else:
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
-                    if len(line) > 2:
+                    if len(line) >= CUT:
                         line = line[:CUT]
                         lines.append(line)
         return lines
