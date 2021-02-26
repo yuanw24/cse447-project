@@ -149,7 +149,7 @@ class LanguageModel:
             model_state_dict = kwargs['model_state_dict']
             self.character_to_idx = saved['character_to_idx']
             self.idx_to_character = saved['idx_to_character']
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.device = torch.device("cpu")
             model = RNNModel(
                 len(self.character_to_idx), EMBEDDING_DIM, HIDDEN_DIM, len(self.character_to_idx), N_RNN_LAYERS,
                 self.device
@@ -361,5 +361,5 @@ class LanguageModel:
     def load(cls, work_dir):
         # your code here
         # this particular model has nothing to load, but for demonstration purposes we will load a blank file
-        save = torch.load(os.path.join(work_dir, CHECKPOINT))
+        save = torch.load(os.path.join(work_dir, CHECKPOINT), map_location=torch.device('cpu'))
         return LanguageModel(saved=save['lm_dict'], model_state_dict=save['torch_model_state_dict'])
