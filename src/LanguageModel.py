@@ -34,7 +34,7 @@ CUT = 128
 # LANGS = []
 TRAINING_PATH = "work_dir/training-monolingual/{}.filtered"
 LANGS = ['en', 'cs', 'de', 'fr', 'es']
-CHECKPOINT = 'model.checkpoint2.64'
+CHECKPOINT = 'model.checkpoint2.128'
 
 
 class LMDataset(Dataset):
