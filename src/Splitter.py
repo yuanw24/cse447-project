@@ -3,8 +3,9 @@ import os, sys, random
 WORK_DIR = 'work_dir/training-monolingual'
 TEST_DIR = 'work_dir/output'
 FILE_PREFIX = 'news.2011.{}.shuffled'
-LANG = ['cs', 'de', 'en', 'es', 'fr']
+LANG = ['cs', 'de', 'en', 'es', 'fr', 'cn', 'jp', 'ru', 'cn-tr']
 # LANG = ['en']
+# LANG = ['cn-tr']
 DO_FILTER = False
 DO_GEN_TEST = True
 THRESHOLD = 0.05

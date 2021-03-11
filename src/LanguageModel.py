@@ -31,10 +31,20 @@ EPOCH = 5
 CUT = 64
 
 # TRAINING_PATH = "work_dir/training/1b_benchmark.train.tokens"
-# LANGS = []
+# LANGS_CUT = {}
 TRAINING_PATH = "work_dir/training-monolingual/{}.filtered"
-LANGS = ['en', 'cs', 'de', 'fr', 'es']
-CHECKPOINT = 'model.checkpoint2.simplecut64'
+LANGS_CUT = {
+    'en': 32,
+    'cs': 32,
+    'de': 32,
+    'fr': 32,
+    'es': 32,
+    'cn': 8,
+    'cn-tr': 8,
+    'jp': 16,
+    'ru': 16,
+}
+CHECKPOINT = 'model.checkpoint4.cut32-16'
 
 
 class LMDataset(Dataset):
@@ -243,20 +253,19 @@ class LanguageModel:
     @classmethod
     def load_training_data(cls, path=TRAINING_PATH):
         """
-        裁剪成32长度的str，不够的ignore
-        read from training file, return
+        read from training file
         :return: List[str] Each string is a sample
         """
         # your code here
         # this particular model doesn't train
         lines = []
-        if LANGS:
-            for lang in LANGS:
+        if LANGS_CUT:
+            for lang in LANGS_CUT:
                 with open(path.format(lang), 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
-                        if len(line) >= CUT:
-                            line = line[:CUT]
+                        if len(line) >= LANGS_CUT[lang]:
+                            line = line[:LANGS_CUT[lang]]
                             lines.append(line)
         else:
             with open(path, 'r', encoding='utf-8') as f:
@@ -337,7 +346,8 @@ class LanguageModel:
                 for output in outputs:
                     predicted_idx = output.argsort(dim=-1, descending=True)[:5]
                     predicted_idx = list(filter(lambda idx: self.idx_to_character[idx.item()] != UNK
-                                                            and self.idx_to_character[idx.item()] != PAD, predicted_idx))[
+                                                            and self.idx_to_character[idx.item()] != PAD,
+                                                predicted_idx))[
                                     :3]
                     predicted_char = [self.idx_to_character[idx.item()] for idx in predicted_idx]
                     preds.append(''.join(predicted_char))
