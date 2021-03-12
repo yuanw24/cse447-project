@@ -42,9 +42,9 @@ LANGS_CUT = {
     'cn': 32,
     # 'cn-tr': 16,
     'jp': 16,
-    'ru': 16,
+    'ru': 32,
 }
-CHECKPOINT = 'model.checkpoint4.cut32-16'
+CHECKPOINT = 'model.checkpoint4.cut64-32'
 
 
 class LMDataset(Dataset):
