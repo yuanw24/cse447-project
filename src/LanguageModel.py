@@ -34,13 +34,13 @@ CUT = 64
 # LANGS_CUT = {}
 TRAINING_PATH = "work_dir/training-monolingual/{}.filtered"
 LANGS_CUT = {
-    'en': 32,
-    'cs': 32,
-    'de': 32,
-    'fr': 32,
-    'es': 32,
-    'cn': 8,
-    'cn-tr': 8,
+    'en': 64,
+    'cs': 64,
+    'de': 64,
+    'fr': 64,
+    'es': 64,
+    'cn': 32,
+    # 'cn-tr': 16,
     'jp': 16,
     'ru': 16,
 }
